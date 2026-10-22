@@ -1159,8 +1159,9 @@ class EstoqueProcessor:
             # herdam esse EAN: é o mesmo produto, e assim juntam com as compras de outros fornecedores.
             eans_por_forn = gtin[ean_ok].groupby(forn[ean_ok]).agg(lambda x: set(x))
             unico = {k: next(iter(v)) for k, v in eans_por_forn.items() if len(v) == 1}
-            herdado = forn.map(unico)
-            chave = ('EAN:' + herdado).where(herdado.notna(), forn)
+            # fillna(''): sem nenhum EAN herdável o map devolve só NaN (float) e 'EAN:' + float quebra
+            herdado = forn.map(unico).fillna('')
+            chave = ('EAN:' + herdado).where(herdado != '', forn)
             e['CHAVE'] = ('EAN:' + gtin).where(ean_ok, chave)
             n_ean = int(e['CHAVE'].str.startswith('EAN:').sum())
             logging.info(f"Entradas: {e['CHAVE'].nunique()} chave(s) de compra "
