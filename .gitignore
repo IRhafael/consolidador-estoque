@@ -1,0 +1,12 @@
+# Dados fiscais e saídas NUNCA entram neste repositório (ele é público)
+*.zip
+*.xml
+*.xls
+*.xlsx
+*.csv
+XML SAIDAS/
+outputs*/
+saida/
+antigo/
+venv/
+__pycache__/

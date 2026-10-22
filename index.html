@@ -1,0 +1,1294 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consolidador de Estoque</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%23137d74%27/%3E%3Cpath d=%27M19 8.5l-7-4-7 4 7 4 7-4zM5 8.5v7l7 4 7-4v-7M12 12.5v7%27 fill=%27none%27 stroke=%27white%27 stroke-width=%271.8%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+<meta name="description" content="Cruza as vendas (NFC-e) com as notas de entrada, valida os pareamentos e gera o inventário do Bloco H. Roda no navegador: os arquivos não saem do computador.">
+<style>
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #f0f3f6; --border: #dce3ea; --border-strong: #c3cdd8;
+  --text: #16212c; --muted: #5a6a7a; --faint: #8796a5;
+  --accent: #137d74; --accent-hover: #0f6a62; --accent-ink: #ffffff; --accent-soft: #e2f3f1;
+  --navy: #1f3b57;
+  --ok: #1d7a39; --ok-soft: #e4f4e9; --bad: #b42318; --bad-soft: #fdeceb; --warn: #8a5a00; --warn-soft: #fff5d9;
+  --info-soft: #e8f0fb; --info: #2453a6;
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.08);
+  --shadow-lg: 0 10px 30px rgba(16,24,40,.14);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #17202a; --surface-2: #1d2833; --border: #2a3744; --border-strong: #3a4a5a;
+    --text: #e6edf3; --muted: #a2b1bf; --faint: #75879a;
+    --accent: #2bb3a5; --accent-hover: #3cc6b8; --accent-ink: #062521; --accent-soft: #143a37;
+    --navy: #9cc0e6;
+    --ok: #5fd08a; --ok-soft: #133524; --bad: #ff8a80; --bad-soft: #3d1a19; --warn: #f1c35a; --warn-soft: #362a0f;
+    --info-soft: #172a45; --info: #8fb6f2;
+    --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-lg: 0 10px 30px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #17202a; --surface-2: #1d2833; --border: #2a3744; --border-strong: #3a4a5a;
+  --text: #e6edf3; --muted: #a2b1bf; --faint: #75879a;
+  --accent: #2bb3a5; --accent-hover: #3cc6b8; --accent-ink: #062521; --accent-soft: #143a37;
+  --navy: #9cc0e6;
+  --ok: #5fd08a; --ok-soft: #133524; --bad: #ff8a80; --bad-soft: #3d1a19; --warn: #f1c35a; --warn-soft: #362a0f;
+  --info-soft: #172a45; --info: #8fb6f2;
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-lg: 0 10px 30px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent); }
+[hidden] { display: none !important; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+.mono { font-family: var(--mono); font-size: .86em; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* topo */
+.topo { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
+.topo .wrap { display: flex; align-items: center; gap: 12px; min-height: 60px; }
+.marca { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.marca .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+.marca .logo svg { width: 18px; height: 18px; }
+.topo .espaco { flex: 1; }
+.selo { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.selo svg { width: 15px; height: 15px; }
+@media (max-width: 560px) { .selo .longo { display: none; } }
+
+/* etapas */
+.etapas { display: flex; gap: 6px; list-style: none; padding: 0; margin: 20px 0 18px; counter-reset: e; overflow-x: auto; }
+.etapas li { flex: 1; min-width: 120px; }
+.etapas button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); text-align: left; cursor: pointer; color: var(--muted); }
+.etapas button:disabled { cursor: default; opacity: .7; }
+.etapas .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--surface-2); border: 1px solid var(--border); flex: none; }
+.etapas .rot { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.etapas .atual button { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 3px var(--accent-soft); }
+.etapas .atual .n { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.etapas .feita .n { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+/* cartões e botões */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+.card + .card, .grade + .card, .card + .grade { margin-top: 16px; }
+.card h2 { font-size: 17px; margin: 0 0 4px; letter-spacing: -.01em; }
+.card h3 { font-size: 15px; margin: 0 0 4px; }
+.card .sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 14px; white-space: nowrap; text-decoration: none; color: var(--text); }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.prim { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.prim:hover:not(:disabled) { background: var(--accent-hover); }
+.btn.grande { padding: 13px 22px; font-size: 16px; }
+.btn.fantasma { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.fantasma:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.btn.mini { padding: 5px 10px; font-size: 13px; }
+.btn .i { width: 16px; height: 16px; }
+.btn.ocupado { pointer-events: none; opacity: .75; }
+.btn.ocupado::after { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: gira .8s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+.linha-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.aviso { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); font-size: 14px; }
+.aviso svg { margin-top: 2px; }
+.aviso.info { background: var(--info-soft); color: var(--info); }
+.aviso.warn { background: var(--warn-soft); color: var(--warn); }
+.aviso.bad { background: var(--bad-soft); color: var(--bad); }
+.aviso.ok { background: var(--ok-soft); color: var(--ok); }
+.aviso p { margin: 0; color: var(--text); }
+.aviso strong { color: inherit; }
+
+/* arquivos */
+.grade { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+@media (max-width: 860px) { .grade { grid-template-columns: 1fr; } }
+.drop { border: 2px dashed var(--border-strong); border-radius: var(--radius); padding: 32px 16px; text-align: center; background: var(--surface-2); transition: border-color .15s, background .15s; }
+.drop.sobre { border-color: var(--accent); background: var(--accent-soft); }
+.drop .icone { width: 46px; height: 46px; margin: 0 auto 8px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; color: var(--accent); border: 1px solid var(--border); }
+.drop .icone svg { width: 22px; height: 22px; }
+.drop strong { display: block; font-size: 16px; margin-bottom: 2px; }
+.drop .linha-btns { justify-content: center; margin-top: 14px; }
+.lista-tipos { margin-top: 16px; display: grid; gap: 8px; }
+.tipo-linha { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.tipo-linha .ok-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--faint); }
+.tipo-linha.tem .ok-ic { background: var(--ok-soft); color: var(--ok); }
+.tipo-linha.falta .ok-ic { background: var(--warn-soft); color: var(--warn); }
+.tipo-linha .ok-ic svg { width: 14px; height: 14px; }
+.tipo-linha .nome { font-weight: 600; font-size: 14px; }
+.tipo-linha .det { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--muted); }
+details.arquivos-det { margin-top: 10px; }
+details.arquivos-det summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.arq-lista { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.arq-lista li { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.arq-lista li:last-child { border-bottom: 0; }
+.arq-lista .x { border: 0; background: none; cursor: pointer; color: var(--faint); padding: 2px; display: grid; }
+.arq-lista .x:hover { color: var(--bad); }
+.mem-num { display: flex; gap: 18px; margin: 10px 0 14px; }
+.mem-num div { font-size: 13px; color: var(--muted); }
+.mem-num b { display: block; font-size: 22px; color: var(--text); letter-spacing: -.02em; }
+details.opcoes summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.campo { display: grid; gap: 4px; margin-top: 12px; font-size: 14px; }
+.campo .ajuda { color: var(--muted); font-size: 13px; }
+.campo input[type=range] { width: 100%; accent-color: var(--accent); }
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-size: 14px; }
+.check input { margin-top: 4px; accent-color: var(--accent); width: 16px; height: 16px; }
+.rodape-acao { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.passos-ajuda { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+.passos-ajuda li { margin: 4px 0; }
+.passos-ajuda b { color: var(--text); }
+
+/* processando */
+.proc { max-width: 640px; margin: 0 auto; }
+.proc-etapas { list-style: none; margin: 16px 0; padding: 0; display: grid; gap: 10px; }
+.proc-etapas li { display: flex; gap: 12px; align-items: center; color: var(--faint); }
+.proc-etapas .bola { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; flex: none; }
+.proc-etapas .bola svg { width: 14px; height: 14px; }
+.proc-etapas li.ativa { color: var(--text); font-weight: 600; }
+.proc-etapas li.ativa .bola { border-color: var(--accent); border-right-color: transparent; animation: gira .9s linear infinite; }
+.proc-etapas li.feita { color: var(--muted); }
+.proc-etapas li.feita .bola { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.detalhe-log { font-size: 13px; color: var(--muted); min-height: 20px; overflow-wrap: anywhere; }
+.cronometro { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+details.log summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.log-caixa { max-height: 260px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-top: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-caixa .w { color: var(--warn); }
+.log-caixa .e { color: var(--bad); }
+
+/* resultado */
+.cab-res { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.cab-res h1 { font-size: 22px; margin: 0; letter-spacing: -.02em; }
+.cab-res p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); min-width: 0; }
+.kpi .t { font-size: 13px; color: var(--muted); font-weight: 600; }
+.kpi .v { font-size: clamp(18px, 5vw, 26px); font-weight: 700; letter-spacing: -.02em; line-height: 1.25; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .s { font-size: 12.5px; color: var(--muted); }
+.kpi .barra { height: 6px; border-radius: 99px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
+.kpi .barra i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.kpi .delta { font-size: 12px; font-weight: 700; color: var(--ok); margin-left: 6px; }
+.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 22px 0 16px; overflow-x: auto; }
+.abas button { border: 0; background: none; padding: 10px 14px; cursor: pointer; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-size: 14px; }
+.abas button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); }
+.abas .cont { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 99px; background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.ferramentas { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.segmentos { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.segmentos button { border: 0; background: none; padding: 7px 12px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); border-right: 1px solid var(--border); }
+.segmentos button:last-child { border-right: 0; }
+.segmentos button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
+.busca { position: relative; flex: 1; min-width: 200px; }
+.busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--faint); width: 16px; height: 16px; }
+.busca input { width: 100%; padding: 8px 10px 8px 34px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); }
+input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dica-tipo { font-size: 13.5px; margin-bottom: 12px; }
+
+.pend { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 10px; border-left: 4px solid var(--border); }
+.pend.r-sim { border-left-color: var(--ok); background: linear-gradient(90deg, var(--ok-soft), var(--surface) 40%); }
+.pend.r-nao { border-left-color: var(--bad); background: linear-gradient(90deg, var(--bad-soft), var(--surface) 40%); }
+.pend-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.tag { padding: 2px 9px; border-radius: 99px; font-weight: 700; font-size: 12px; }
+.tag.auto { background: var(--info-soft); color: var(--info); }
+.tag.venda { background: var(--bad-soft); color: var(--bad); }
+.tag.compra { background: var(--warn-soft); color: var(--warn); }
+.medidor { display: inline-flex; align-items: center; gap: 6px; }
+.medidor .trilho { width: 60px; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
+.medidor .trilho i { display: block; height: 100%; }
+.pend-corpo { display: grid; grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr); gap: 10px; align-items: stretch; }
+@media (max-width: 720px) { .pend-corpo { grid-template-columns: 1fr; } .pend-corpo .seta { transform: rotate(90deg); justify-self: center; } }
+.lado { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; min-width: 0; }
+.lado .rot { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 700; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.lado .desc { font-weight: 650; font-size: 15px; margin: 2px 0; overflow-wrap: anywhere; }
+.lado .desc.vazio { color: var(--faint); font-weight: 500; font-style: italic; }
+.lado .meta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.lado .trocado { font-size: 12px; color: var(--info); font-weight: 600; }
+.seta { display: grid; place-items: center; color: var(--faint); }
+.link-btn { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; display: inline-flex; gap: 4px; align-items: center; }
+.link-btn svg { width: 13px; height: 13px; }
+.obs { margin: 10px 0 0; font-size: 13px; color: var(--warn); display: flex; gap: 6px; }
+.obs svg { width: 15px; height: 15px; margin-top: 2px; }
+.pend-acoes { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+.b-sim[aria-pressed=true] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.b-nao[aria-pressed=true] { background: var(--bad); border-color: var(--bad); color: #fff; }
+.troca { margin-top: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 10px; background: var(--surface); }
+.troca .busca { min-width: 0; }
+.troca ul { list-style: none; margin: 8px 0 0; padding: 0; max-height: 280px; overflow: auto; }
+.troca li button { width: 100%; text-align: left; border: 0; background: none; padding: 8px; border-radius: 6px; cursor: pointer; display: grid; gap: 1px; }
+.troca li button:hover { background: var(--surface-2); }
+.troca li .d { font-weight: 600; font-size: 14px; }
+.troca li .m { font-size: 12px; color: var(--muted); }
+.vazio-lista { text-align: center; color: var(--muted); padding: 40px 16px; }
+.paginacao { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+
+table.tab { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tab-rolagem { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+table.tab th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--surface-2); padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+table.tab td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.tab tr:last-child td { border-bottom: 0; }
+table.tab td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.tab input[type=number] { width: 86px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
+table.tab input.preenchido { border-color: var(--accent); background: var(--accent-soft); }
+
+.anos { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ano-card .dt { font-size: 13px; color: var(--muted); }
+.ano-card .vl { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+.ano-card .ln { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); padding: 3px 0; }
+.ano-card .ln b { color: var(--text); font-variant-numeric: tabular-nums; }
+.ano-card .btn { width: 100%; margin-top: 12px; }
+.downloads { display: grid; gap: 10px; }
+.dl { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.dl .t { font-weight: 600; font-size: 14px; }
+.dl .d { font-size: 13px; color: var(--muted); }
+@media (max-width: 560px) { .dl { grid-template-columns: 1fr; } }
+
+/* barra fixa de respostas */
+.barra-resp { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+.barra-resp .wrap { display: flex; align-items: center; gap: 12px; padding-top: 12px; padding-bottom: 12px; flex-wrap: wrap; }
+.barra-resp .txt { flex: 1; min-width: 200px; font-size: 14px; }
+.barra-resp .txt b { font-variant-numeric: tabular-nums; }
+.pino { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px 1px 10px; }
+body.com-barra main { padding-bottom: 96px; }
+
+/* sobreposição e toast */
+.veu { position: fixed; inset: 0; z-index: 40; background: rgba(10,16,22,.45); display: grid; place-items: center; padding: 16px; }
+.veu .card { width: min(460px, 100%); text-align: center; }
+.veu .spinner { width: 36px; height: 36px; margin: 4px auto 12px; border-radius: 50%; border: 3px solid var(--accent-soft); border-top-color: var(--accent); animation: gira .9s linear infinite; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); z-index: 50; background: var(--navy); color: #fff; padding: 12px 16px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); font-size: 14px; max-width: min(560px, calc(100% - 32px)); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+:root[data-theme="dark"] .toast { color: #0f151b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { color: #0f151b; } }
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+body.com-barra .toast { bottom: 96px; }
+footer.rodape { color: var(--faint); font-size: 12.5px; text-align: center; padding: 28px 16px 36px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></symbol>
+    <symbol id="i-pasta" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-troca" viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3"/></symbol>
+    <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-alerta" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+    <symbol id="i-lupa" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+    <symbol id="i-refazer" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+    <symbol id="i-caixa" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+  </defs>
+</svg>
+
+<header class="topo">
+  <div class="wrap">
+    <div class="marca"><span class="logo"><svg class="i"><use href="#i-caixa"/></svg></span>Consolidador de Estoque</div>
+    <span class="espaco"></span>
+    <span class="selo" title="O processamento acontece neste navegador. Nenhum arquivo é enviado para servidor."><svg class="i"><use href="#i-cadeado"/></svg><span>Local<span class="longo"> — seus arquivos não saem deste computador</span></span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="aviso-file" class="aviso warn" style="margin-top:16px" hidden>
+    <svg class="i"><use href="#i-alerta"/></svg>
+    <p><strong>Abra esta página por um endereço http.</strong> Aberta direto do disco (file://) o navegador bloqueia a leitura do motor Python. Use o link do GitHub Pages, ou na pasta do projeto rode <span class="mono">python -m http.server</span> e abra <span class="mono">http://localhost:8000</span>.</p>
+  </div>
+
+  <ol class="etapas" id="etapas">
+    <li data-e="arquivos"><button type="button" data-ir="arquivos"><span class="n">1</span><span class="rot">Arquivos</span></button></li>
+    <li data-e="processando"><button type="button" disabled><span class="n">2</span><span class="rot">Processar</span></button></li>
+    <li data-e="validar"><button type="button" data-ir="validar" disabled><span class="n">3</span><span class="rot">Validar</span></button></li>
+    <li data-e="baixar"><button type="button" data-ir="baixar" disabled><span class="n">4</span><span class="rot">Inventário e arquivos</span></button></li>
+  </ol>
+
+  <!-- ═════════════════════ 1. ARQUIVOS ═════════════════════ -->
+  <section id="v-arquivos">
+    <div class="grade">
+      <div class="card">
+        <h2>Envie os arquivos do período</h2>
+        <p class="sub">Pode ser um ano ou vários de uma vez — o saldo de 31/12 de um ano vira o saldo inicial do seguinte.</p>
+        <div class="drop" id="drop">
+          <div class="icone"><svg class="i"><use href="#i-upload"/></svg></div>
+          <strong>Arraste aqui os arquivos ou a pasta inteira</strong>
+          <span class="muted small">ZIPs das NFC-e (vendas) e planilhas da Consulta NF-e da SEFAZ (compras)</span>
+          <div class="linha-btns">
+            <button type="button" class="btn prim" id="b-escolher-pasta"><svg class="i"><use href="#i-pasta"/></svg>Escolher pasta</button>
+            <button type="button" class="btn" id="b-escolher-arq"><svg class="i"><use href="#i-upload"/></svg>Escolher arquivos</button>
+          </div>
+          <input type="file" id="in-pasta" webkitdirectory directory multiple hidden>
+          <input type="file" id="in-arq" multiple accept=".zip,.xml,.xls,.xlsx,.csv" hidden>
+        </div>
+        <div class="lista-tipos" id="lista-tipos"></div>
+        <details class="arquivos-det" id="det-arquivos" hidden>
+          <summary>Ver todos os arquivos (<span id="n-arquivos">0</span>)</summary>
+          <ul class="arq-lista" id="arq-lista"></ul>
+          <div class="linha-btns" style="margin-top:8px"><button type="button" class="btn mini fantasma" id="b-limpar-arq"><svg class="i"><use href="#i-lixo"/></svg>Remover todos</button></div>
+        </details>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>Memória de vínculos</h2>
+          <p class="sub" id="mem-texto"></p>
+          <div class="mem-num" id="mem-num" hidden>
+            <div><b id="mem-produtos">0</b>produtos ligados</div>
+            <div><b id="mem-rejeitados">0</b>pares rejeitados</div>
+          </div>
+          <div class="linha-btns">
+            <button type="button" class="btn mini" id="b-mem-baixar"><svg class="i"><use href="#i-baixar"/></svg>Baixar cópia</button>
+            <button type="button" class="btn mini" id="b-mem-importar"><svg class="i"><use href="#i-upload"/></svg>Importar CSV</button>
+            <button type="button" class="btn mini fantasma" id="b-mem-apagar"><svg class="i"><use href="#i-lixo"/></svg>Apagar</button>
+            <input type="file" id="in-mem" accept=".csv" multiple hidden>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Como funciona</h2>
+          <ol class="passos-ajuda">
+            <li><b>Envie</b> as vendas (ZIP das NFC-e) e as compras (planilhas da SEFAZ).</li>
+            <li><b>Processe.</b> O que for certo casa sozinho; o resto vira sugestão.</li>
+            <li><b>Valide</b> as sugestões, começando pelas de maior valor.</li>
+            <li><b>Aplique e revalide</b> quantas vezes quiser — cada resposta fica na memória.</li>
+            <li><b>Baixe</b> o inventário (H010) de cada ano.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <details class="opcoes">
+        <summary>Opções avançadas</summary>
+        <label class="campo">
+          <span>Similaridade mínima para casar sozinho: <b id="v-limiar">88%</b></span>
+          <input type="range" id="op-limiar" min="80" max="96" step="1" value="88">
+          <span class="ajuda">Mais baixo casa mais coisa no automático (e você confere mais). Padrão 88%.</span>
+        </label>
+        <label class="check"><input type="checkbox" id="op-trava" checked><span><b>Trava de preço</b><br><span class="muted small">Não casa no automático se o preço de venda for menos da metade ou mais de 5× o custo.</span></span></label>
+        <label class="check"><input type="checkbox" id="op-ignorar"><span><b>Ignorar no H010 os saldos negativos sem nenhuma compra</b><br><span class="muted small">Útil no primeiro ano, quando as vendas saem de estoque comprado antes do período.</span></span></label>
+      </details>
+    </div>
+
+    <div class="rodape-acao">
+      <span class="muted small" id="dica-processar">Envie as vendas e as compras para continuar.</span>
+      <button type="button" class="btn prim grande" id="b-processar" disabled><svg class="i"><use href="#i-refazer"/></svg>Processar</button>
+    </div>
+  </section>
+
+  <!-- ═════════════════════ 2. PROCESSANDO ═════════════════════ -->
+  <section id="v-processando" hidden>
+    <div class="card proc">
+      <h2>Processando…</h2>
+      <p class="sub">Na primeira vez o navegador baixa o Python (~30 MB). Depois fica em cache.</p>
+      <ol class="proc-etapas" id="proc-etapas"></ol>
+      <div class="detalhe-log" id="proc-detalhe"></div>
+      <div class="cronometro" id="proc-tempo"></div>
+      <div id="proc-erro" hidden></div>
+      <details class="log" style="margin-top:12px"><summary>Ver registro completo</summary><div class="log-caixa" id="log-caixa"></div></details>
+    </div>
+  </section>
+
+  <!-- ═════════════════════ 3/4. RESULTADO ═════════════════════ -->
+  <section id="v-resultado" hidden>
+    <div class="cab-res">
+      <div>
+        <h1>Resultado do cruzamento</h1>
+        <p id="res-periodo"></p>
+      </div>
+      <div class="linha-btns">
+        <button type="button" class="btn" data-ir="arquivos"><svg class="i"><use href="#i-pasta"/></svg>Trocar arquivos</button>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="abas" role="tablist" id="abas">
+      <button role="tab" data-aba="validar" aria-selected="true">Validar pareamentos<span class="cont" id="c-validar">0</span></button>
+      <button role="tab" data-aba="fatores" aria-selected="false">Fatores de embalagem<span class="cont" id="c-fatores">0</span></button>
+      <button role="tab" data-aba="baixar" aria-selected="false">Inventário e arquivos</button>
+      <button role="tab" data-aba="alertas" aria-selected="false">Alertas<span class="cont" id="c-alertas">0</span></button>
+    </div>
+
+    <!-- validar -->
+    <div data-painel="validar">
+      <div class="ferramentas">
+        <div class="segmentos" id="filtro-tipo"></div>
+        <label class="busca"><svg class="i"><use href="#i-lupa"/></svg><input type="search" id="busca" placeholder="Buscar produto ou chave…" aria-label="Buscar"></label>
+        <label class="check" style="margin:0"><input type="checkbox" id="so-pendentes"><span class="small">Só sem resposta</span></label>
+      </div>
+      <div class="aviso info dica-tipo" id="dica-tipo"></div>
+      <div id="lista-pend"></div>
+      <div class="paginacao" id="paginacao"></div>
+    </div>
+
+    <!-- fatores -->
+    <div data-painel="fatores" hidden>
+      <div class="aviso info dica-tipo"><svg class="i"><use href="#i-info"/></svg><p>Compras em <b>fardo, caixa ou pacote</b> precisam virar unidades. Confira o fator que o sistema deduziu da descrição; se estiver errado, digite o certo em <b>Fator correto</b> (ex: fardo com 20 = 20). Vale para todas as notas dessa compra, em todos os anos.</p></div>
+      <div class="ferramentas"><label class="busca"><svg class="i"><use href="#i-lupa"/></svg><input type="search" id="busca-fator" placeholder="Buscar descrição ou fornecedor…" aria-label="Buscar fatores"></label></div>
+      <div class="tab-rolagem"><table class="tab" id="tab-fatores"></table></div>
+      <div class="paginacao" id="pag-fatores"></div>
+    </div>
+
+    <!-- baixar -->
+    <div data-painel="baixar" hidden>
+      <h3 style="margin:0 0 10px">Inventário (Bloco H) por ano</h3>
+      <div class="anos" id="anos"></div>
+      <h3 style="margin:24px 0 10px">Outros arquivos</h3>
+      <div class="downloads card" style="padding:12px">
+        <div class="dl"><div><div class="t">Planilha de validação (Excel)</div><div class="d">Para quem prefere responder no Excel: preencha Sim/Não e envie de volta no passo 1.</div></div><button type="button" class="btn" data-baixar="validacao"><svg class="i"><use href="#i-baixar"/></svg>Baixar .xlsx</button></div>
+        <div class="dl"><div><div class="t">Estoque por produto</div><div class="d">Entradas, saídas e saldo de cada produto (CSV para Excel).</div></div><button type="button" class="btn" data-baixar="estoque"><svg class="i"><use href="#i-baixar"/></svg>Baixar .csv</button></div>
+        <div class="dl"><div><div class="t">Kardex mensal</div><div class="d">Saldo e custo médio mês a mês de cada produto (CSV).</div></div><button type="button" class="btn" data-baixar="kardex"><svg class="i"><use href="#i-baixar"/></svg>Baixar .csv</button></div>
+        <div class="dl"><div><div class="t">Memória de vínculos</div><div class="d">cadastro_produtos.csv — guarde uma cópia; importe em outro computador para continuar de onde parou.</div></div><button type="button" class="btn" id="b-mem-baixar2"><svg class="i"><use href="#i-baixar"/></svg>Baixar .csv</button></div>
+      </div>
+    </div>
+
+    <!-- alertas -->
+    <div data-painel="alertas" hidden>
+      <div id="alertas"></div>
+    </div>
+  </section>
+</main>
+
+<div class="barra-resp" id="barra-resp" hidden>
+  <div class="wrap">
+    <div class="txt" id="barra-txt"></div>
+    <button type="button" class="btn fantasma" id="b-descartar">Descartar</button>
+    <button type="button" class="btn prim" id="b-aplicar"><svg class="i"><use href="#i-refazer"/></svg>Aplicar e revalidar</button>
+  </div>
+</div>
+
+<div class="veu" id="veu" hidden><div class="card"><div class="spinner"></div><h3 id="veu-titulo">Recalculando…</h3><p class="muted small" id="veu-detalhe" style="margin:4px 0 0"></p></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<footer class="rodape">Processado localmente com Python (Pyodide) · consolidacao_estoque.py</footer>
+
+<!-- Código do Web Worker: roda o Python fora da tela, para a página não travar. -->
+<script id="codigo-worker" type="text/plain">
+const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+let py = null, motor = null;
+
+function mensagemErro(e) {
+  const linhas = String((e && e.message) || e).trim().split('\n').filter(Boolean);
+  return (linhas[linhas.length - 1] || String(e)).replace(/^\w*(Error|Exception):\s*/, '');
+}
+
+onmessage = async ({ data }) => {
+  const { id, acao } = data;
+  try {
+    if (acao === 'iniciar') {
+      postMessage({ tipo: 'status', msg: 'Baixando o Python…' });
+      importScripts(PYODIDE + 'pyodide.js');
+      py = await loadPyodide({ indexURL: PYODIDE });
+      postMessage({ tipo: 'status', msg: 'Carregando pandas e leitores de Excel…' });
+      await py.loadPackage(['pandas', 'micropip']);
+      await py.pyimport('micropip').install(['openpyxl', 'xlrd']);
+      py.FS.mkdirTree('/app');
+      for (const f of ['consolidacao_estoque.py', 'motor_web.py']) {
+        const r = await fetch(new URL(f, data.base).href + '?v=' + data.versao, { cache: 'no-cache' });
+        if (!r.ok) throw new Error('Não consegui carregar ' + f + ' (HTTP ' + r.status + ').');
+        py.FS.writeFile('/app/' + f, await r.text());
+      }
+      py.runPython("import sys\nif '/app' not in sys.path: sys.path.insert(0, '/app')");
+      motor = py.pyimport('motor_web');
+      motor.configurar_log((msg, lvl) => postMessage({ tipo: 'log', msg, lvl }));
+      return postMessage({ id, valor: true });
+    }
+    if (acao === 'processar') {
+      motor.limpar_dados();
+      motor.definir_memoria(data.memoria.cadastro_csv || '', data.memoria.rejeitados_csv || '');
+      for (const a of data.arquivos) {
+        py.FS.mkdirTree(a.destino.slice(0, a.destino.lastIndexOf('/')));
+        py.FS.writeFile(a.destino, new Uint8Array(a.bytes));
+      }
+      return postMessage({ id, valor: motor.processar(JSON.stringify(data.opcoes)) });
+    }
+    if (acao === 'revalidar') return postMessage({ id, valor: motor.revalidar(data.json) });
+    if (acao === 'gerar') {
+      const caminho = motor.gerar_arquivo(data.tipo, data.ano || 0);
+      const bytes = py.FS.readFile(caminho);
+      return postMessage({ id, valor: { nome: caminho.split('/').pop(), bytes: bytes.buffer } }, [bytes.buffer]);
+    }
+    throw new Error('Ação desconhecida: ' + acao);
+  } catch (e) {
+    postMessage({ id, erro: mensagemErro(e) });
+  }
+};
+</script>
+
+<script>
+'use strict';
+const VERSAO = '2026-10-22';
+const LS = { mem: 'consolidador.memoria.v1', resp: 'consolidador.respostas.v1', opc: 'consolidador.opcoes.v1' };
+const POR_PAGINA = 25;
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+const nf0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const normalizar = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const icone = (id, cls = 'i') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+
+function lerLS(chave, padrao) { try { const v = localStorage.getItem(chave); return v ? JSON.parse(v) : padrao; } catch { return padrao; } }
+function gravarLS(chave, valor) { try { localStorage.setItem(chave, JSON.stringify(valor)); return true; } catch { return false; } }
+
+const estado = {
+  arquivos: [],
+  memoria: lerLS(LS.mem, null),
+  opcoes: Object.assign({ limiar: 88, trava: true, ignorar: false }, lerLS(LS.opc, {})),
+  resultado: null,
+  respostas: lerLS(LS.resp, {}),   // par -> {resp, saida_chave, saida_desc, entrada_chave, entrada_desc, sim}
+  fatores: {},                     // CHAVE -> fator digitado
+  filtro: { tipo: 'todos', busca: '', soPendentes: false, pagina: 0 },
+  filtroFator: { busca: '', pagina: 0 },
+  trocaAberta: null,
+  avisos: [],
+  view: 'arquivos',
+};
+
+/* ───────────── motor (Web Worker com Pyodide) ───────────── */
+let worker = null, seq = 0, motorPronto = null;
+const pendentes = new Map();
+let aoLog = () => {}, aoStatus = () => {};
+
+function chamar(acao, dados = {}, transfer = []) {
+  return new Promise((resolve, reject) => {
+    const id = ++seq;
+    pendentes.set(id, { resolve, reject });
+    worker.postMessage({ id, acao, ...dados }, transfer);
+  });
+}
+
+function iniciarMotor() {
+  if (motorPronto) return motorPronto;
+  const codigo = $('#codigo-worker').textContent;
+  worker = new Worker(URL.createObjectURL(new Blob([codigo], { type: 'text/javascript' })));
+  worker.onmessage = ({ data }) => {
+    if (data.tipo === 'log') return aoLog(data.msg, data.lvl);
+    if (data.tipo === 'status') return aoStatus(data.msg);
+    const p = pendentes.get(data.id);
+    if (!p) return;
+    pendentes.delete(data.id);
+    data.erro ? p.reject(new Error(data.erro)) : p.resolve(data.valor);
+  };
+  worker.onerror = (e) => {
+    for (const p of pendentes.values()) p.reject(new Error(e.message || 'Falha no processamento.'));
+    pendentes.clear();
+  };
+  motorPronto = chamar('iniciar', { base: location.href, versao: VERSAO });
+  motorPronto.catch(() => { motorPronto = null; worker.terminate(); worker = null; });
+  return motorPronto;
+}
+
+/* ───────────── navegação ───────────── */
+function irPara(view) {
+  if ((view === 'validar' || view === 'baixar') && !estado.resultado) return;
+  estado.view = view;
+  $('#v-arquivos').hidden = view !== 'arquivos';
+  $('#v-processando').hidden = view !== 'processando';
+  $('#v-resultado').hidden = !(view === 'validar' || view === 'baixar');
+  if (view === 'validar' || view === 'baixar') abrirAba(view === 'baixar' ? 'baixar' : estado.abaAtual && estado.abaAtual !== 'baixar' ? estado.abaAtual : 'validar');
+  atualizarEtapas();
+  atualizarBarra();
+  window.scrollTo({ top: 0 });
+}
+
+function atualizarEtapas() {
+  const temRes = !!estado.resultado;
+  const atual = estado.view === 'validar' || estado.view === 'baixar' ? (estado.abaAtual === 'baixar' ? 'baixar' : 'validar') : estado.view;
+  const ordem = ['arquivos', 'processando', 'validar', 'baixar'];
+  for (const li of $$('#etapas li')) {
+    const e = li.dataset.e;
+    li.classList.toggle('atual', e === atual);
+    li.classList.toggle('feita', ordem.indexOf(e) < ordem.indexOf(atual) || (temRes && e === 'processando'));
+    const b = $('button', li);
+    if (e === 'validar' || e === 'baixar') b.disabled = !temRes;
+  }
+}
+
+document.addEventListener('click', (ev) => {
+  const ir = ev.target.closest('[data-ir]');
+  if (ir && !ir.disabled) irPara(ir.dataset.ir);
+});
+
+/* ───────────── 1. arquivos ───────────── */
+const TIPOS = {
+  venda: { nome: 'Vendas — NFC-e (ZIP ou XML)', obrig: true },
+  compra: { nome: 'Compras — planilhas da Consulta NF-e (SEFAZ)', obrig: true },
+  validacao: { nome: 'Planilha de validação respondida no Excel', obrig: false, ajuda: 'As respostas Sim/Não dela entram antes do cruzamento.' },
+  fatores: { nome: 'Fatores de conversão (fatores_conversao.csv)', obrig: false },
+  ignorado: { nome: 'Ignorados', obrig: false, ajuda: 'Formato não reconhecido ou relatório gerado por esta ferramenta.' },
+};
+
+function classificar(file, caminho) {
+  const nome = file.name, n = nome.toLowerCase();
+  const ano = (caminho.match(/(?:^|\D)(20\d{2})(?!\d)/) || [])[1] || '';
+  let tipo = 'ignorado';
+  if (nome.startsWith('~$') || nome.startsWith('.')) tipo = 'ignorado';
+  else if (/\.(zip|xml)$/.test(n)) tipo = 'venda';
+  else if (/\.xlsx?$/.test(n)) tipo = /validacao/.test(n) ? 'validacao' : /^(inventario_efd|analise_nfce)/.test(n) ? 'ignorado' : 'compra';
+  else if (/\.csv$/.test(n)) tipo = /rejeitad/.test(n) ? 'rejeitados' : /cadastro_produtos/.test(n) ? 'cadastro' : /fator/.test(n) ? 'fatores' : 'ignorado';
+  return { file, nome, caminho, tipo, ano, id: caminho + '|' + file.size };
+}
+
+async function adicionarArquivos(lista) {
+  const novos = [];
+  for (const { file, caminho } of lista) {
+    const a = classificar(file, caminho || file.webkitRelativePath || file.name);
+    if (a.tipo === 'cadastro' || a.tipo === 'rejeitados') { await importarMemoria([file]); continue; }
+    if (estado.arquivos.some((x) => x.id === a.id)) continue;
+    if (a.tipo === 'validacao') estado.arquivos = estado.arquivos.filter((x) => x.tipo !== 'validacao');
+    if (a.tipo === 'fatores') estado.arquivos = estado.arquivos.filter((x) => x.tipo !== 'fatores');
+    novos.push(a);
+  }
+  estado.arquivos.push(...novos);
+  renderArquivos();
+  if (novos.length) toast(`${novos.length} arquivo(s) adicionado(s).`);
+}
+
+function renderArquivos() {
+  const porTipo = {};
+  for (const a of estado.arquivos) (porTipo[a.tipo] ||= []).push(a);
+  const linhas = [];
+  for (const [tipo, info] of Object.entries(TIPOS)) {
+    const lst = porTipo[tipo] || [];
+    if (!lst.length && !info.obrig) continue;
+    const anos = {};
+    for (const a of lst) anos[a.ano || 'sem ano'] = (anos[a.ano || 'sem ano'] || 0) + 1;
+    const chips = Object.entries(anos).sort().map(([ano, n]) => `<span class="chip">${esc(ano)}: ${n}</span>`).join('');
+    const det = lst.length
+      ? (tipo === 'venda' || tipo === 'compra' ? `<div class="chips">${chips}</div>` : `<div class="det">${esc(lst.map((a) => a.nome).join(', '))}${info.ajuda ? ' — ' + esc(info.ajuda) : ''}</div>`)
+      : `<div class="det">Nenhum arquivo ainda — obrigatório.</div>`;
+    const cls = lst.length ? (tipo === 'ignorado' ? '' : 'tem') : 'falta';
+    linhas.push(`<div class="tipo-linha ${cls}"><span class="ok-ic">${icone(lst.length ? (tipo === 'ignorado' ? 'i-x' : 'i-ok') : 'i-alerta')}</span><div><div class="nome">${esc(info.nome)}</div>${det}</div><span class="muted small">${lst.length || ''}</span></div>`);
+  }
+  $('#lista-tipos').innerHTML = linhas.join('');
+  $('#det-arquivos').hidden = !estado.arquivos.length;
+  $('#n-arquivos').textContent = estado.arquivos.length;
+  $('#arq-lista').innerHTML = estado.arquivos.map((a, i) =>
+    `<li><span><span class="mono">${esc(a.caminho)}</span> <span class="muted">· ${esc(TIPOS[a.tipo]?.nome.split(' —')[0] || a.tipo)}</span></span><button type="button" class="x" data-rm="${i}" aria-label="Remover ${esc(a.nome)}">${icone('i-x')}</button></li>`).join('');
+  const temV = !!porTipo.venda?.length, temC = !!porTipo.compra?.length;
+  const bloqueado = location.protocol === 'file:';
+  $('#b-processar').disabled = !(temV && temC) || bloqueado;
+  $('#dica-processar').textContent = bloqueado ? 'Abra a página por http para processar.'
+    : !temV && !temC ? 'Envie as vendas e as compras para continuar.'
+    : !temV ? 'Faltam as vendas (ZIPs das NFC-e).' : !temC ? 'Faltam as compras (planilhas da SEFAZ).'
+    : `${porTipo.venda.length + porTipo.compra.length} arquivos prontos.` + (estado.resultado ? ' Processar de novo refaz tudo com a memória atual.' : '');
+}
+
+$('#arq-lista').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-rm]');
+  if (!b) return;
+  estado.arquivos.splice(+b.dataset.rm, 1);
+  renderArquivos();
+});
+$('#b-limpar-arq').addEventListener('click', () => { estado.arquivos = []; renderArquivos(); });
+$('#b-escolher-pasta').addEventListener('click', () => $('#in-pasta').click());
+$('#b-escolher-arq').addEventListener('click', () => $('#in-arq').click());
+for (const id of ['#in-pasta', '#in-arq']) {
+  $(id).addEventListener('change', async (ev) => {
+    await adicionarArquivos([...ev.target.files].map((file) => ({ file, caminho: file.webkitRelativePath || file.name })));
+    ev.target.value = '';
+  });
+}
+
+// Arrastar e soltar, inclusive pastas (percorre as subpastas)
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('sobre'); }));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('sobre'); }));
+drop.addEventListener('drop', async (e) => {
+  const itens = [...(e.dataTransfer.items || [])].map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  if (!itens.length) return adicionarArquivos([...e.dataTransfer.files].map((file) => ({ file, caminho: file.name })));
+  const lista = [];
+  async function percorrer(entrada, caminho) {
+    if (entrada.isFile) {
+      const file = await new Promise((ok, falha) => entrada.file(ok, falha));
+      lista.push({ file, caminho: caminho + file.name });
+    } else if (entrada.isDirectory) {
+      const leitor = entrada.createReader();
+      let lote;
+      do {
+        lote = await new Promise((ok, falha) => leitor.readEntries(ok, falha));
+        for (const filho of lote) await percorrer(filho, caminho + entrada.name + '/');
+      } while (lote.length);
+    }
+  }
+  for (const it of itens) await percorrer(it, '');
+  adicionarArquivos(lista);
+});
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
+/* ───────────── memória (cadastro de produtos) ───────────── */
+function contarMemoria(csv) {
+  const linhas = String(csv || '').split(/\r?\n/).filter((l) => l.trim());
+  if (linhas.length < 2) return { chaves: 0, produtos: 0 };
+  const cab = linhas[0].replace(/^﻿/, '').split(';');
+  const iP = cab.indexOf('PRODUTO_ID');
+  const prods = new Set(linhas.slice(1).map((l) => l.split(';')[iP]).filter(Boolean));
+  return { chaves: linhas.length - 1, produtos: prods.size };
+}
+
+function salvarMemoria(mem) {
+  estado.memoria = mem;
+  if (!gravarLS(LS.mem, mem)) toast('Não consegui guardar a memória neste navegador — baixe uma cópia para não perder.');
+  renderMemoria();
+}
+
+function renderMemoria() {
+  const m = estado.memoria;
+  const tem = !!(m && m.cadastro_csv && contarMemoria(m.cadastro_csv).chaves);
+  $('#mem-num').hidden = !tem;
+  if (tem) {
+    const c = contarMemoria(m.cadastro_csv);
+    $('#mem-produtos').textContent = nf0.format(c.produtos);
+    $('#mem-rejeitados').textContent = nf0.format(Math.max(0, String(m.rejeitados_csv || '').split(/\r?\n/).filter((l) => l.trim()).length - 1));
+    const quando = m.salvo_em ? new Date(m.salvo_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    $('#mem-texto').innerHTML = `Guardada neste navegador${quando ? ' em ' + esc(quando) : ''}. É ela que faz cada validação valer para os próximos meses e anos. <b>Baixe uma cópia</b> de vez em quando.`;
+  } else {
+    $('#mem-texto').innerHTML = 'Ainda vazia — será criada no primeiro processamento. Se você já tem um <span class="mono">cadastro_produtos.csv</span>, importe aqui (ou arraste junto com os arquivos).';
+  }
+  $('#b-mem-baixar').disabled = !tem;
+  $('#b-mem-apagar').disabled = !tem;
+}
+
+async function importarMemoria(files) {
+  const mem = Object.assign({ cadastro_csv: '', rejeitados_csv: '' }, estado.memoria || {});
+  let ok = 0;
+  for (const f of files) {
+    const texto = (await f.text()).replace(/^﻿/, '');
+    const cab = texto.split(/\r?\n/)[0] || '';
+    if (/CHAVE_VENDA;CHAVE_COMPRA/.test(cab)) { mem.rejeitados_csv = texto; ok++; }
+    else if (/^CHAVE;LADO;PRODUTO_ID/.test(cab)) { mem.cadastro_csv = texto; ok++; }
+  }
+  if (!ok) return toast('Esse CSV não é um cadastro_produtos.csv desta ferramenta.');
+  mem.salvo_em = new Date().toISOString();
+  salvarMemoria(mem);
+  toast('Memória importada.');
+}
+
+function baixarMemoria() {
+  const m = estado.memoria;
+  if (!m?.cadastro_csv) return;
+  baixarBlob(new Blob(['﻿' + m.cadastro_csv], { type: 'text/csv' }), 'cadastro_produtos.csv');
+  if (m.rejeitados_csv && m.rejeitados_csv.split(/\r?\n/).filter((l) => l.trim()).length > 1) {
+    setTimeout(() => baixarBlob(new Blob(['﻿' + m.rejeitados_csv], { type: 'text/csv' }), 'cadastro_produtos_rejeitados.csv'), 400);
+  }
+}
+
+$('#b-mem-baixar').addEventListener('click', baixarMemoria);
+$('#b-mem-baixar2').addEventListener('click', baixarMemoria);
+$('#b-mem-importar').addEventListener('click', () => $('#in-mem').click());
+$('#in-mem').addEventListener('change', async (e) => { await importarMemoria([...e.target.files]); e.target.value = ''; });
+$('#b-mem-apagar').addEventListener('click', () => {
+  if (!confirm('Apagar a memória de vínculos deste navegador? Todas as validações feitas serão perdidas (a menos que você tenha uma cópia baixada).')) return;
+  try { localStorage.removeItem(LS.mem); } catch {}
+  estado.memoria = null;
+  renderMemoria();
+  toast('Memória apagada.');
+});
+
+/* ───────────── opções ───────────── */
+function renderOpcoes() {
+  $('#op-limiar').value = estado.opcoes.limiar;
+  $('#v-limiar').textContent = estado.opcoes.limiar + '%';
+  $('#op-trava').checked = estado.opcoes.trava;
+  $('#op-ignorar').checked = estado.opcoes.ignorar;
+}
+$('#op-limiar').addEventListener('input', (e) => { estado.opcoes.limiar = +e.target.value; $('#v-limiar').textContent = e.target.value + '%'; gravarLS(LS.opc, estado.opcoes); });
+$('#op-trava').addEventListener('change', (e) => { estado.opcoes.trava = e.target.checked; gravarLS(LS.opc, estado.opcoes); });
+$('#op-ignorar').addEventListener('change', (e) => { estado.opcoes.ignorar = e.target.checked; gravarLS(LS.opc, estado.opcoes); });
+
+/* ───────────── 2. processar ───────────── */
+const ETAPAS_PROC = [
+  { id: 'motor', rot: 'Preparar o motor (Python no navegador)' },
+  { id: 'vendas', rot: 'Ler as vendas (NFC-e)', re: /extração de XMLs/ },
+  { id: 'compras', rot: 'Ler as compras (planilhas)', re: /leitura de planilhas/ },
+  { id: 'cruzar', rot: 'Cruzar vendas × compras', re: /Iniciando cruzamento/ },
+  { id: 'kardex', rot: 'Montar o kardex e os saldos por ano', re: /Montando kardex/ },
+];
+let cronometro = null;
+
+function marcarEtapa(id) {
+  const idx = ETAPAS_PROC.findIndex((e) => e.id === id);
+  $$('#proc-etapas li').forEach((li, i) => {
+    li.className = i < idx ? 'feita' : i === idx ? 'ativa' : '';
+    $('.bola', li).innerHTML = i < idx ? icone('i-ok') : '';
+  });
+}
+
+function registrarLog(msg, lvl) {
+  const caixa = $('#log-caixa');
+  const div = document.createElement('div');
+  if (lvl === 'WARNING') { div.className = 'w'; estado.avisos.push(msg); }
+  if (lvl === 'ERROR') div.className = 'e';
+  div.textContent = msg;
+  caixa.appendChild(div);
+  if (caixa.children.length > 600) caixa.firstChild.remove();
+  caixa.scrollTop = caixa.scrollHeight;
+  const etapa = ETAPAS_PROC.find((e) => e.re && e.re.test(msg));
+  if (etapa && estado.view === 'processando') marcarEtapa(etapa.id);
+  $('#proc-detalhe').textContent = msg.length > 160 ? msg.slice(0, 160) + '…' : msg;
+  $('#veu-detalhe').textContent = msg.length > 120 ? msg.slice(0, 120) + '…' : msg;
+}
+aoLog = registrarLog;
+aoStatus = (msg) => { $('#proc-detalhe').textContent = msg; };
+
+function destinoDe(a, usados) {
+  if (a.tipo === 'validacao') return '/validacao/' + a.nome;
+  if (a.tipo === 'fatores') return '/dados/fatores_conversao.csv';
+  let d = `/dados/${a.ano || 'sem_ano'}/${a.nome}`, i = 2;
+  while (usados.has(d)) d = `/dados/${a.ano || 'sem_ano'}/${i++}_${a.nome}`;
+  usados.add(d);
+  return d;
+}
+
+async function processar() {
+  irPara('processando');
+  estado.avisos = [];
+  $('#log-caixa').innerHTML = '';
+  $('#proc-erro').hidden = true;
+  $('#proc-etapas').innerHTML = ETAPAS_PROC.map((e) => `<li><span class="bola"></span>${esc(e.rot)}</li>`).join('');
+  marcarEtapa('motor');
+  const t0 = Date.now();
+  clearInterval(cronometro);
+  cronometro = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); $('#proc-tempo').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} decorridos`; }, 500);
+  try {
+    await iniciarMotor();
+    marcarEtapa('vendas');
+    const usados = new Set();
+    const enviar = estado.arquivos.filter((a) => ['venda', 'compra', 'validacao', 'fatores'].includes(a.tipo));
+    const arquivos = await Promise.all(enviar.map(async (a) => ({ destino: destinoDe(a, usados), bytes: await a.file.arrayBuffer() })));
+    const planilha = enviar.find((a) => a.tipo === 'validacao');
+    const opcoes = {
+      limiar_auto_similaridade: estado.opcoes.limiar / 100,
+      trava_preco: estado.opcoes.trava,
+      ignorar_estoque_anterior: estado.opcoes.ignorar,
+      planilha_validacao: planilha ? planilha.nome : null,
+    };
+    const json = await chamar('processar', { arquivos, opcoes, memoria: estado.memoria || {} }, arquivos.map((a) => a.bytes));
+    clearInterval(cronometro);
+    if (planilha) estado.arquivos = estado.arquivos.filter((a) => a !== planilha); // já foi incorporada à memória
+    receberResultado(JSON.parse(json), 'processar');
+  } catch (e) {
+    clearInterval(cronometro);
+    const box = $('#proc-erro');
+    box.hidden = false;
+    box.innerHTML = `<div class="aviso bad" style="margin-top:14px">${icone('i-alerta')}<p><strong>Não foi possível processar.</strong> ${esc(e.message)}</p></div><div class="linha-btns" style="margin-top:12px"><button type="button" class="btn" data-ir="arquivos">Voltar aos arquivos</button></div>`;
+    $$('#proc-etapas li.ativa').forEach((li) => li.classList.remove('ativa'));
+  }
+}
+$('#b-processar').addEventListener('click', processar);
+
+/* ───────────── 3. resultado ───────────── */
+const ROTULO_TIPO = {
+  'AUTO A CONFIRMAR': { curto: 'Automático a confirmar', cls: 'auto', dica: 'O sistema casou sozinho, mas com menos de 98% de certeza. Já está valendo no cálculo; confirme ou recuse.' },
+  'VENDA SEM COMPRA': { curto: 'Venda sem compra', cls: 'venda', dica: 'Produto vendido sem nenhuma compra ligada — gera saldo negativo. Veja se a compra sugerida é o mesmo produto, ou troque por outra.' },
+  'COMPRA SEM VENDA': { curto: 'Compra sem venda', cls: 'compra', dica: 'Compra que não ligou a nenhuma venda. Pode ser estoque parado de verdade, ou o mesmo produto com outro nome (ex: fornecedor novo).' },
+};
+
+function parDe(p) { return p.SAIDA_CHAVE + '→' + (p.ENTRADA_CHAVE || ''); }
+function somaPareados(r) { return Object.entries(r.contagem || {}).filter(([k]) => k.startsWith('PAREADO')).reduce((s, [, v]) => s + v, 0); }
+
+function receberResultado(r, origem) {
+  const antes = estado.resultado;
+  estado.resultado = r;
+  estado.catCompra = (r.catalogo_compra || []).map((x) => ({ ...x, n: normalizar(x.d + ' ' + x.c + ' ' + (x.f || '')) }));
+  estado.catVenda = (r.catalogo_venda || []).map((x) => ({ ...x, n: normalizar(x.d + ' ' + x.c) }));
+  estado.pendIndex = new Map(r.pendencias.map((p) => [parDe(p), p]));
+  salvarMemoria({ cadastro_csv: r.memoria.cadastro_csv, rejeitados_csv: r.memoria.rejeitados_csv, salvo_em: new Date().toISOString() });
+  if (origem === 'revalidar') { estado.respostas = {}; estado.fatores = {}; gravarLS(LS.resp, {}); }
+  else for (const k of Object.keys(estado.respostas)) if (!estado.pendIndex.has(k)) delete estado.respostas[k];
+  estado.filtro.pagina = 0;
+  estado.trocaAberta = null;
+  renderResultado(antes);
+  irPara('validar');
+  const a = r.aplicadas;
+  if (a) {
+    const delta = antes ? somaPareados(r) - somaPareados(antes) : null;
+    toast(`Gravado na memória: ${a.sim} vínculo(s), ${a.nao} rejeição(ões), ${a.fatores} fator(es).` + (delta !== null ? ` Produtos pareados: ${nf0.format(somaPareados(antes))} → ${nf0.format(somaPareados(r))}.` : ''), 6000);
+  }
+}
+
+function renderResultado(antes) {
+  const r = estado.resultado;
+  const anos = [...new Set([...Object.keys(r.itens_por_ano.vendas), ...Object.keys(r.itens_por_ano.compras)])].filter((a) => a && a !== 'nan').sort();
+  $('#res-periodo').textContent = `${anos.length > 1 ? 'Anos ' + anos[0] + ' a ' + anos[anos.length - 1] : 'Ano ' + (anos[0] || '')} · ${nf0.format(r.chaves_venda)} produtos vendidos · ${nf0.format(r.chaves_compra)} produtos comprados`;
+  const pareados = somaPareados(r);
+  const deltaP = antes ? pareados - somaPareados(antes) : 0;
+  const nAuto = r.pendencias.filter((p) => p.TIPO_PENDENCIA === 'AUTO A CONFIRMAR').length;
+  const ultimo = r.anos[r.anos.length - 1];
+  const pct = r.chaves_venda ? Math.min(100, (pareados / r.chaves_venda) * 100) : 0;
+  $('#kpis').innerHTML = `
+    <div class="kpi"><div class="t">Produtos pareados</div><div class="v">${nf0.format(pareados)}${deltaP > 0 ? `<span class="delta">+${nf0.format(deltaP)}</span>` : ''}</div><div class="s">venda e compra no mesmo produto</div><div class="barra"><i style="width:${pct.toFixed(1)}%"></i></div></div>
+    <div class="kpi"><div class="t">Para validar</div><div class="v">${nf0.format(r.pendencias.length)}</div><div class="s">${nf0.format(nAuto)} automáticos a confirmar</div></div>
+    <div class="kpi"><div class="t">Vendas sem compra</div><div class="v">${nf0.format(r.contagem['APENAS SAIDA'] || 0)}</div><div class="s">geram saldo negativo</div></div>
+    <div class="kpi"><div class="t">Inventário ${ultimo ? ultimo.ano : ''}</div><div class="v">${ultimo ? brl.format(ultimo.valor) : '—'}</div><div class="s">${ultimo ? nf0.format(ultimo.itens_pos) + ' itens com saldo positivo' : ''}</div></div>`;
+  $('#c-validar').textContent = nf0.format(r.pendencias.length);
+  $('#c-fatores').textContent = nf0.format(r.fatores.length);
+  $('#c-alertas').textContent = nf0.format((r.suspeitos || []).length + avisosUnicos().length);
+  renderFiltroTipo();
+  renderPendencias();
+  renderFatores();
+  renderAnos();
+  renderAlertas();
+}
+
+/* abas */
+function abrirAba(aba) {
+  estado.abaAtual = aba;
+  for (const b of $$('#abas [data-aba]')) b.setAttribute('aria-selected', String(b.dataset.aba === aba));
+  for (const p of $$('[data-painel]')) p.hidden = p.dataset.painel !== aba;
+  estado.view = aba === 'baixar' ? 'baixar' : 'validar';
+  atualizarEtapas();
+}
+$('#abas').addEventListener('click', (e) => { const b = e.target.closest('[data-aba]'); if (b) abrirAba(b.dataset.aba); });
+
+/* filtros da validação */
+function renderFiltroTipo() {
+  const cont = { todos: estado.resultado.pendencias.length };
+  for (const p of estado.resultado.pendencias) cont[p.TIPO_PENDENCIA] = (cont[p.TIPO_PENDENCIA] || 0) + 1;
+  const opcoes = [['todos', 'Todos'], ['AUTO A CONFIRMAR', 'Automáticos a confirmar'], ['VENDA SEM COMPRA', 'Vendas sem compra'], ['COMPRA SEM VENDA', 'Compras sem venda']];
+  $('#filtro-tipo').innerHTML = opcoes.filter(([k]) => k === 'todos' || cont[k]).map(([k, rot]) =>
+    `<button type="button" data-tipo="${esc(k)}" aria-pressed="${estado.filtro.tipo === k}">${esc(rot)} <span class="muted">${nf0.format(cont[k] || 0)}</span></button>`).join('');
+}
+$('#filtro-tipo').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tipo]');
+  if (!b) return;
+  estado.filtro.tipo = b.dataset.tipo; estado.filtro.pagina = 0;
+  renderFiltroTipo(); renderPendencias();
+});
+let tBusca;
+$('#busca').addEventListener('input', (e) => { clearTimeout(tBusca); tBusca = setTimeout(() => { estado.filtro.busca = e.target.value; estado.filtro.pagina = 0; renderPendencias(); }, 200); });
+$('#so-pendentes').addEventListener('change', (e) => { estado.filtro.soPendentes = e.target.checked; estado.filtro.pagina = 0; renderPendencias(); });
+
+function pendenciasFiltradas() {
+  const { tipo, busca, soPendentes } = estado.filtro;
+  const q = normalizar(busca).trim().split(/\s+/).filter(Boolean);
+  return estado.resultado.pendencias.filter((p) => {
+    if (tipo !== 'todos' && p.TIPO_PENDENCIA !== tipo) return false;
+    if (soPendentes && estado.respostas[parDe(p)]) return false;
+    if (q.length) {
+      const t = normalizar(`${p.SAIDA_DESC} ${p.ENTRADA_DESC || ''} ${p.SAIDA_CHAVE} ${p.ENTRADA_CHAVE || ''} ${p.ENTRADA_FORNECEDOR || ''}`);
+      if (!q.every((w) => t.includes(w))) return false;
+    }
+    return true;
+  });
+}
+
+function corSimilaridade(s) { return s >= 75 ? 'var(--ok)' : s >= 45 ? 'var(--warn)' : 'var(--bad)'; }
+
+function renderPendencias() {
+  const r = estado.resultado;
+  const info = ROTULO_TIPO[estado.filtro.tipo];
+  const dica = $('#dica-tipo');
+  if (info) {
+    dica.innerHTML = `${icone('i-info')}<p>${esc(info.dica)}${estado.filtro.tipo === 'AUTO A CONFIRMAR' ? ' <button type="button" class="btn mini" id="b-confirmar-todos" style="margin-left:6px">Confirmar todos sem resposta</button>' : ''}</p>`;
+  } else {
+    dica.innerHTML = `${icone('i-info')}<p>Ordenado pelo <b>valor envolvido</b>: as primeiras linhas são as que mais mexem no estoque. Responda <b>É o mesmo produto</b> ou <b>Não é</b>; se a sugestão estiver errada, use <b>Trocar</b> para escolher o produto certo. Depois clique em <b>Aplicar e revalidar</b>.</p>`;
+  }
+  const lista = pendenciasFiltradas();
+  const total = lista.length;
+  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  estado.filtro.pagina = Math.min(estado.filtro.pagina, paginas - 1);
+  const ini = estado.filtro.pagina * POR_PAGINA;
+  const pagina = lista.slice(ini, ini + POR_PAGINA);
+  $('#lista-pend').innerHTML = pagina.length ? pagina.map(cartaoPendencia).join('')
+    : `<div class="vazio-lista card">${r.pendencias.length ? 'Nada com esse filtro.' : 'Nenhuma pendência — tudo pareado.'}</div>`;
+  $('#paginacao').innerHTML = total > POR_PAGINA ? `
+    <span>Mostrando ${nf0.format(ini + 1)}–${nf0.format(Math.min(ini + POR_PAGINA, total))} de ${nf0.format(total)}</span>
+    <span class="linha-btns"><button type="button" class="btn mini" data-pag="-1" ${estado.filtro.pagina === 0 ? 'disabled' : ''}>Anterior</button>
+    <span>Página ${estado.filtro.pagina + 1} de ${paginas}</span>
+    <button type="button" class="btn mini" data-pag="1" ${estado.filtro.pagina >= paginas - 1 ? 'disabled' : ''}>Próxima</button></span>` : (total ? `<span>${nf0.format(total)} item(ns)</span>` : '');
+}
+
+$('#paginacao').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pag]');
+  if (!b) return;
+  estado.filtro.pagina += +b.dataset.pag;
+  estado.trocaAberta = null;
+  renderPendencias();
+  $('#abas').scrollIntoView({ behavior: 'smooth' });
+});
+
+function cartaoPendencia(p) {
+  const k = parDe(p);
+  const resp = estado.respostas[k];
+  const tipo = ROTULO_TIPO[p.TIPO_PENDENCIA] || { curto: p.TIPO_PENDENCIA, cls: '' };
+  const sim = Number(p['SIMILARIDADE (%)'] || 0);
+  const vendaChave = resp?.saida_chave || p.SAIDA_CHAVE;
+  const vendaDesc = resp?.saida_desc ?? p.SAIDA_DESC;
+  const compraChave = resp?.entrada_chave ?? p.ENTRADA_CHAVE ?? '';
+  const compraDesc = resp?.entrada_desc ?? (p.ENTRADA_CHAVE ? p.ENTRADA_DESC : '');
+  const trocouV = resp && resp.saida_chave !== p.SAIDA_CHAVE;
+  const trocouC = resp && (resp.entrada_chave || '') !== (p.ENTRADA_CHAVE || '');
+  const ladoTroca = p.TIPO_PENDENCIA === 'COMPRA SEM VENDA' ? 'venda' : 'compra';
+  const btnTroca = (lado) => ladoTroca === lado ? `<button type="button" class="link-btn" data-trocar="${esc(k)}">${icone('i-troca')}Trocar</button>` : '';
+  const metaVenda = trocouV ? `<div class="trocado">Escolhido por você</div><div class="meta mono">${esc(vendaChave)}</div>`
+    : `<div class="meta"><span class="mono">${esc(p.SAIDA_CHAVE)}</span> · ${nf.format(p.SAIDA_QTD || 0)} un vendidas${p.PRECO_MEDIO_VENDA ? ' · ' + brl.format(p.PRECO_MEDIO_VENDA) + '/un' : ''}</div>`;
+  const metaCompra = !compraChave ? '' : trocouC ? `<div class="trocado">Escolhido por você</div><div class="meta mono">${esc(compraChave)}</div>`
+    : `<div class="meta">${p.ENTRADA_FORNECEDOR ? esc(p.ENTRADA_FORNECEDOR) + ' · ' : ''}<span class="mono">${esc(p.ENTRADA_CHAVE)}</span></div><div class="meta">${nf.format(p.ENTRADA_QTD_AJUST || 0)} un compradas${p.CUSTO_MEDIO_ENTRADA ? ' · custo ' + brl.format(p.CUSTO_MEDIO_ENTRADA) + '/un' : ''}${Number(p.FATOR_CONV_ENTRADA) > 1 ? ' · fator ' + nf.format(p.FATOR_CONV_ENTRADA) : ''}</div>`;
+  const podeSim = !!(vendaChave && compraChave);
+  const obs = p.OBSERVACAO ? `<p class="obs">${icone('i-alerta')}<span>${esc(p.OBSERVACAO)}</span></p>` : '';
+  const troca = estado.trocaAberta === k ? painelTroca(k, ladoTroca) : '';
+  return `<article class="pend ${resp ? 'r-' + (resp.resp === 'Sim' ? 'sim' : 'nao') : ''}" data-k="${esc(k)}">
+    <div class="pend-topo">
+      <span class="tag ${tipo.cls}">${esc(tipo.curto)}</span>
+      <span>${brl.format(p['IMPACTO_R$'] || 0)} envolvidos</span>
+      ${compraChave && !trocouC && !trocouV ? `<span class="medidor" title="Semelhança das descrições"><span class="trilho"><i style="width:${Math.min(100, sim)}%;background:${corSimilaridade(sim)}"></i></span>${nf0.format(sim)}% parecido</span>` : ''}
+    </div>
+    <div class="pend-corpo">
+      <div class="lado"><div class="rot"><span>Vendido no PDV</span>${btnTroca('venda')}</div><div class="desc">${esc(vendaDesc)}</div>${metaVenda}</div>
+      <div class="seta">${icone('i-troca')}</div>
+      <div class="lado"><div class="rot"><span>${p.TIPO_PENDENCIA === 'COMPRA SEM VENDA' ? 'Comprado' : 'Compra sugerida'}</span>${btnTroca('compra')}</div>
+        <div class="desc ${compraChave ? '' : 'vazio'}">${compraChave ? esc(compraDesc) : 'Nenhuma compra parecida — use Trocar para procurar'}</div>${metaCompra}</div>
+    </div>
+    ${obs}${troca}
+    <div class="pend-acoes">
+      <button type="button" class="btn mini b-sim" data-resp="Sim" aria-pressed="${resp?.resp === 'Sim'}" ${podeSim ? '' : 'disabled'}>${icone('i-ok')}É o mesmo produto</button>
+      <button type="button" class="btn mini b-nao" data-resp="Não" aria-pressed="${resp?.resp === 'Não'}" ${compraChave ? '' : 'disabled'}>${icone('i-x')}Não é</button>
+      ${resp ? `<button type="button" class="btn mini fantasma" data-resp="">Limpar resposta</button>` : ''}
+    </div>
+  </article>`;
+}
+
+function painelTroca(k, lado) {
+  const q = estado.trocaBusca || '';
+  return `<div class="troca" data-lado="${lado}">
+    <label class="busca"><svg class="i"><use href="#i-lupa"/></svg><input type="search" class="in-troca" value="${esc(q)}" placeholder="Procurar ${lado === 'compra' ? 'compra (descrição, EAN, fornecedor)' : 'venda (descrição ou código do PDV)'}…" aria-label="Procurar"></label>
+    <ul class="res-troca">${resultadosTroca(q, lado)}</ul>
+    <div class="linha-btns" style="margin-top:6px"><button type="button" class="btn mini fantasma" data-fechar-troca>Fechar</button></div>
+  </div>`;
+}
+
+function resultadosTroca(q, lado) {
+  const cat = lado === 'compra' ? estado.catCompra : estado.catVenda;
+  const termos = normalizar(q).trim().split(/\s+/).filter(Boolean);
+  if (!termos.length) return '<li class="muted small" style="padding:8px">Digite parte do nome, o EAN ou o código.</li>';
+  const achados = [];
+  for (const x of cat) { if (termos.every((t) => x.n.includes(t))) { achados.push(x); if (achados.length >= 40) break; } }
+  if (!achados.length) return '<li class="muted small" style="padding:8px">Nada encontrado.</li>';
+  achados.sort((a, b) => b.q - a.q);
+  return achados.slice(0, 12).map((x) => `<li><button type="button" data-escolher="${esc(x.c)}" data-desc="${esc(x.d)}">
+    <span class="d">${esc(x.d)}</span>
+    <span class="m"><span class="mono">${esc(x.c)}</span>${x.f ? ' · ' + esc(x.f) : ''} · ${nf.format(x.q)} un${x.p ? ' · já no produto ' + esc(x.p) : ''}</span></button></li>`).join('');
+}
+
+$('#lista-pend').addEventListener('click', (e) => {
+  const card = e.target.closest('.pend');
+  if (!card) return;
+  const k = card.dataset.k;
+  const p = estado.pendIndex.get(k);
+  const bResp = e.target.closest('[data-resp]');
+  if (bResp) {
+    const v = bResp.dataset.resp;
+    if (!v) delete estado.respostas[k];
+    else {
+      const atual = estado.respostas[k];
+      if (atual && atual.resp === v && v !== '') delete estado.respostas[k];
+      else estado.respostas[k] = Object.assign(atual || respostaBase(p), { resp: v });
+    }
+    salvarRespostas();
+    redesenharCartao(card, p);
+    return;
+  }
+  if (e.target.closest('[data-trocar]')) {
+    estado.trocaAberta = estado.trocaAberta === k ? null : k;
+    estado.trocaBusca = '';
+    redesenharCartao(card, p);
+    const inp = $('.in-troca', card); if (inp) inp.focus();
+    return;
+  }
+  if (e.target.closest('[data-fechar-troca]')) { estado.trocaAberta = null; redesenharCartao(card, p); return; }
+  const esc_ = e.target.closest('[data-escolher]');
+  if (esc_) {
+    const lado = e.target.closest('.troca').dataset.lado;
+    const r = Object.assign(estado.respostas[k] || respostaBase(p), { resp: 'Sim' });
+    if (lado === 'compra') { r.entrada_chave = esc_.dataset.escolher; r.entrada_desc = esc_.dataset.desc; }
+    else { r.saida_chave = esc_.dataset.escolher; r.saida_desc = esc_.dataset.desc; }
+    estado.respostas[k] = r;
+    estado.trocaAberta = null;
+    salvarRespostas();
+    redesenharCartao(card, p);
+    toast('Troca anotada como "É o mesmo produto". Clique em Aplicar e revalidar quando terminar.');
+  }
+});
+$('#lista-pend').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('in-troca')) return;
+  estado.trocaBusca = e.target.value;
+  const box = e.target.closest('.troca');
+  $('.res-troca', box).innerHTML = resultadosTroca(e.target.value, box.dataset.lado);
+});
+$('#dica-tipo').addEventListener('click', (e) => {
+  if (!e.target.closest('#b-confirmar-todos')) return;
+  let n = 0;
+  for (const p of estado.resultado.pendencias) {
+    if (p.TIPO_PENDENCIA !== 'AUTO A CONFIRMAR' || estado.respostas[parDe(p)]) continue;
+    estado.respostas[parDe(p)] = Object.assign(respostaBase(p), { resp: 'Sim' }); n++;
+  }
+  salvarRespostas(); renderPendencias();
+  toast(`${n} automático(s) marcados como "É o mesmo produto".`);
+});
+
+function respostaBase(p) {
+  return { saida_chave: p.SAIDA_CHAVE, saida_desc: p.SAIDA_DESC, entrada_chave: p.ENTRADA_CHAVE || '', entrada_desc: p.ENTRADA_CHAVE ? p.ENTRADA_DESC : '', sim: p['SIMILARIDADE (%)'] || 0 };
+}
+
+function redesenharCartao(card, p) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = cartaoPendencia(p);
+  card.replaceWith(tmp.firstElementChild);
+  atualizarBarra();
+}
+
+function salvarRespostas() { gravarLS(LS.resp, estado.respostas); atualizarBarra(); }
+
+/* fatores */
+const FAT_POR_PAGINA = 50;
+let tBuscaF;
+$('#busca-fator').addEventListener('input', (e) => { clearTimeout(tBuscaF); tBuscaF = setTimeout(() => { estado.filtroFator.busca = e.target.value; estado.filtroFator.pagina = 0; renderFatores(); }, 200); });
+function renderFatores() {
+  const q = normalizar(estado.filtroFator.busca).trim().split(/\s+/).filter(Boolean);
+  const lista = estado.resultado.fatores.filter((f) => !q.length || q.every((t) => normalizar(`${f.DESCRICAO} ${f.FORNECEDOR} ${f.CHAVE}`).includes(t)));
+  const paginas = Math.max(1, Math.ceil(lista.length / FAT_POR_PAGINA));
+  estado.filtroFator.pagina = Math.min(estado.filtroFator.pagina, paginas - 1);
+  const ini = estado.filtroFator.pagina * FAT_POR_PAGINA;
+  const linhas = lista.slice(ini, ini + FAT_POR_PAGINA).map((f) => {
+    const v = estado.fatores[f.CHAVE] ?? '';
+    return `<tr><td><b>${esc(f.DESCRICAO)}</b><div class="muted small">${esc(f.FORNECEDOR || '')} <span class="mono">${esc(f.CHAVE)}</span></div></td>
+      <td>${esc(f.UNID || '')}</td><td class="n">${nf.format(f.QTD_ENTRADA || 0)}</td><td class="n"><b>${nf.format(f.FATOR_CONV || 1)}</b></td>
+      <td class="small muted" style="min-width:220px">${esc(f.MOTIVO_REVISAO)}</td>
+      <td><input type="number" min="1" step="any" inputmode="decimal" data-fator="${esc(f.CHAVE)}" value="${esc(v)}" class="${v ? 'preenchido' : ''}" aria-label="Fator correto para ${esc(f.DESCRICAO)}"></td></tr>`;
+  }).join('');
+  $('#tab-fatores').innerHTML = `<thead><tr><th>Compra</th><th>Unid.</th><th>Qtd. nas notas</th><th>Fator atual</th><th>Por que conferir</th><th>Fator correto</th></tr></thead><tbody>${linhas || '<tr><td colspan="6" class="muted">Nada a conferir.</td></tr>'}</tbody>`;
+  $('#pag-fatores').innerHTML = lista.length > FAT_POR_PAGINA ? `<span>${nf0.format(ini + 1)}–${nf0.format(Math.min(ini + FAT_POR_PAGINA, lista.length))} de ${nf0.format(lista.length)}</span>
+    <span class="linha-btns"><button type="button" class="btn mini" data-pagf="-1" ${estado.filtroFator.pagina === 0 ? 'disabled' : ''}>Anterior</button><button type="button" class="btn mini" data-pagf="1" ${estado.filtroFator.pagina >= paginas - 1 ? 'disabled' : ''}>Próxima</button></span>` : '';
+}
+$('#pag-fatores').addEventListener('click', (e) => { const b = e.target.closest('[data-pagf]'); if (!b) return; estado.filtroFator.pagina += +b.dataset.pagf; renderFatores(); });
+$('#tab-fatores').addEventListener('input', (e) => {
+  const inp = e.target.closest('[data-fator]');
+  if (!inp) return;
+  const v = inp.value.trim();
+  if (v && Number(v) > 0) estado.fatores[inp.dataset.fator] = v; else delete estado.fatores[inp.dataset.fator];
+  inp.classList.toggle('preenchido', !!estado.fatores[inp.dataset.fator]);
+  atualizarBarra();
+});
+
+/* inventário e downloads */
+function renderAnos() {
+  const r = estado.resultado;
+  $('#anos').innerHTML = r.anos.map((a) => `<div class="card ano-card">
+    <div class="dt">Inventário de 31/12/${a.ano}</div>
+    <div class="vl">${brl.format(a.valor)}</div>
+    <div class="ln"><span>Itens com saldo positivo</span><b>${nf0.format(a.itens_pos)}</b></div>
+    <div class="ln"><span>Itens com saldo negativo</span><b>${nf0.format(a.itens_neg)}</b></div>
+    <div class="ln"><span>Valor dos negativos</span><b>${brl.format(a.valor_neg)}</b></div>
+    <button type="button" class="btn prim" data-baixar="h010" data-ano="${a.ano}">${icone('i-baixar')}Baixar H010 ${a.ano} (.xlsx)</button>
+  </div>`).join('') || '<p class="muted">Sem saldos por ano.</p>';
+}
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-baixar]');
+  if (!b) return;
+  b.classList.add('ocupado');
+  try {
+    const { nome, bytes } = await chamar('gerar', { tipo: b.dataset.baixar, ano: +(b.dataset.ano || 0) });
+    baixarBlob(new Blob([bytes], { type: nome.endsWith('.csv') ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), nome);
+  } catch (err) {
+    toast('Não foi possível gerar o arquivo: ' + err.message, 6000);
+  } finally {
+    b.classList.remove('ocupado');
+  }
+});
+
+/* alertas */
+function avisosUnicos() { return [...new Set(estado.avisos)]; }
+function renderAlertas() {
+  const r = estado.resultado;
+  const sus = r.suspeitos || [];
+  const av = avisosUnicos();
+  let html = '';
+  if (sus.length) {
+    html += `<div class="aviso warn dica-tipo">${icone('i-alerta')}<p><b>Venda muito maior que a compra.</b> Nestes produtos pareados a venda passa de 15× a compra — quase sempre é casamento errado ou fator de embalagem faltando.</p></div>
+    <div class="tab-rolagem" style="margin-bottom:18px"><table class="tab"><thead><tr><th>Produto</th><th>Comprado</th><th>Vendido</th><th>Saldo</th><th>Chaves</th></tr></thead><tbody>${sus.map((s) =>
+      `<tr><td><b>${esc(s.ROTULO_PRODUTO)}</b><div class="muted small mono">${esc(s.PRODUTO_ID)}</div></td><td class="n">${nf.format(s.QTD_ENTRADA_AJUSTADA)}</td><td class="n">${nf.format(s.QTD_SAIDA)}</td><td class="n">${nf.format(s.SALDO_QTD)}</td><td class="small mono">${esc(s.CHAVES_VENDA)}<br>${esc(s.CHAVES_COMPRA)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if (av.length) html += `<h3 style="margin:0 0 8px">Avisos do processamento</h3>` + av.map((m) => `<div class="aviso warn" style="margin-bottom:8px">${icone('i-alerta')}<p>${esc(m)}</p></div>`).join('');
+  $('#alertas').innerHTML = html || '<div class="vazio-lista card">Nenhum alerta.</div>';
+}
+
+/* barra de respostas + revalidar */
+function atualizarBarra() {
+  const resp = Object.values(estado.respostas);
+  const nSim = resp.filter((r) => r.resp === 'Sim').length, nNao = resp.filter((r) => r.resp === 'Não').length;
+  const nFat = Object.keys(estado.fatores).length;
+  const mostrar = !!estado.resultado && (nSim + nNao + nFat) > 0 && estado.view !== 'processando' && estado.view !== 'arquivos';
+  $('#barra-resp').hidden = !mostrar;
+  document.body.classList.toggle('com-barra', mostrar);
+  if (!mostrar) return;
+  $('#barra-txt').innerHTML = `<b>${nf0.format(nSim + nNao)}</b> resposta(s) <span class="pino" style="background:var(--ok)"></span>${nf0.format(nSim)} sim <span class="pino" style="background:var(--bad)"></span>${nf0.format(nNao)} não${nFat ? ` <span class="pino" style="background:var(--info)"></span>${nf0.format(nFat)} fator(es)` : ''} <span class="muted">— ainda não aplicadas</span>`;
+}
+
+$('#b-descartar').addEventListener('click', () => {
+  if (!confirm('Descartar as respostas ainda não aplicadas?')) return;
+  estado.respostas = {}; estado.fatores = {};
+  gravarLS(LS.resp, {});
+  renderPendencias(); renderFatores(); atualizarBarra();
+});
+
+$('#b-aplicar').addEventListener('click', async () => {
+  const respostas = Object.values(estado.respostas).map((r) => ({
+    SAIDA_CHAVE: r.saida_chave, ENTRADA_CHAVE: r.entrada_chave, SAIDA_DESC: r.saida_desc, ENTRADA_DESC: r.entrada_desc,
+    'SIMILARIDADE (%)': r.sim, 'ACEITAR_MATCH (Sim/Não)': r.resp,
+  }));
+  const descFator = new Map(estado.resultado.fatores.map((f) => [f.CHAVE, f.DESCRICAO]));
+  const fatores = Object.entries(estado.fatores).map(([CHAVE, v]) => ({ CHAVE, FATOR_CORRETO: String(v).replace(',', '.'), DESCRICAO: descFator.get(CHAVE) || '' }));
+  $('#veu').hidden = false;
+  $('#veu-titulo').textContent = 'Gravando respostas e recalculando…';
+  $('#veu-detalhe').textContent = 'Leva uns 30 segundos.';
+  try {
+    const json = await chamar('revalidar', { json: JSON.stringify({ respostas, fatores }) });
+    receberResultado(JSON.parse(json), 'revalidar');
+  } catch (e) {
+    toast('Não foi possível aplicar: ' + e.message, 7000);
+  } finally {
+    $('#veu').hidden = true;
+  }
+});
+
+/* utilidades */
+function baixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: nome });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+let tToast;
+function toast(msg, ms = 3500) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(tToast); tToast = setTimeout(() => t.classList.remove('on'), ms);
+}
+window.addEventListener('beforeunload', (e) => {
+  if (Object.keys(estado.fatores).length || (estado.resultado && Object.keys(estado.respostas).length)) { e.preventDefault(); e.returnValue = ''; }
+});
+
+/* início */
+if (location.protocol === 'file:') $('#aviso-file').hidden = false;
+renderArquivos();
+renderMemoria();
+renderOpcoes();
+atualizarEtapas();
+// Começa a baixar o motor em segundo plano: quando os arquivos estiverem escolhidos, ele já está pronto.
+if (location.protocol !== 'file:') iniciarMotor().catch(() => {});
+</script>
+</body>
+</html>
